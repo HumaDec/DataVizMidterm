@@ -1,0 +1,382 @@
+---
+title: "MidTerm_Telecom"
+author: "Emma Horton"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+MidTerm Telecom Customer Churn Analysis
+Emma Horton – Data Visualization Midterm Project
+
+Libraries Used: 
+```{r libraries, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(lsr)
+library(broom)
+
+```
+
+Data Loading
+```{r}
+telco <- read.csv("Telco-Customer-Churn.csv", na.strings = c(""))
+
+#str(telco)
+#summary(telco)
+#head(telco, 5)
+```
+Data Cleaning
+
+```{r}
+# SeniorCitizen to factor
+telco$SeniorCitizen <- factor(telco$SeniorCitizen, levels=c(0,1), labels=c("No", "Yes"))
+
+# Character columns to factors
+cat_cols <- c("gender","Partner","Dependents","PhoneService",
+              "MultipleLines","InternetService","OnlineSecurity","OnlineBackup",
+              "DeviceProtection","TechSupport","StreamingTV","StreamingMovies",
+              "Contract","PaperlessBilling","PaymentMethod","Churn")
+
+telco[cat_cols] <- lapply(telco[cat_cols], factor)
+
+# Fix TotalCharges: convert to numeric
+telco$TotalCharges <- as.numeric(as.character(telco$TotalCharges))
+
+# Replace "No internet service" and "No phone service" with "No", replace "No phone service" with "No"
+no_internet_cols <- c("OnlineSecurity","OnlineBackup","DeviceProtection",
+                      "TechSupport","StreamingTV","StreamingMovies")
+for(col in no_internet_cols) {
+    telco[[col]] <- factor(ifelse(telco[[col]]=="No internet service", "No", 
+                                  as.character(telco[[col]])))
+}
+telco$MultipleLines <- factor(ifelse(telco$MultipleLines=="No phone service", "No", 
+                                     as.character(telco$MultipleLines)))
+# Drop customerID
+telco$customerID <- NULL
+
+# Verify results
+#sum(is.na(telco$TotalCharges))  
+#levels(telco$MultipleLines)        
+#levels(telco$OnlineSecurity)       
+
+```
+Set Color Pallet
+```{r}
+project_colors <- c(
+  "Yes" = "#E74C3C",    
+  "No" = "#3498DB",         
+  "Female" = "#9B59B6",    
+  "Male" = "#1ABC9C",     
+  "Month-to-month" = "#F39C12",  
+  "One year" = "#2ECC71",       
+  "Two year" = "#34495E",       
+  "DSL" = "#16A085",        
+  "Fiber optic" = "#D35400",
+  "No" = "#95A5A6"          
+)
+
+```
+
+Exploratory Analysis
+Distribution of a single categorical variable
+1. Categorical Variable Distribution – Contract Type vs Churn (Bar Chart)
+A key categorical variable is the Contract type. I suspect contract length has an effect on churn. I will plot the count of customers by contract type, and distinguish churn vs not churn with color.
+
+```{r}
+contract_churn_data <- telco %>%
+  group_by(Contract, Churn) %>%
+  summarise(count = n(), .groups = 'drop')
+
+plot_ly(contract_churn_data,
+        x = ~Contract,
+        y = ~count,
+        color = ~Churn,
+        colors = project_colors,
+        type = "bar") %>%
+  layout(
+    barmode = "group",
+    title = list(text = "Customer Count by Contract Type and Churn Status", x = 0.5),
+    xaxis = list(title = "Contract Type"),
+    yaxis = list(title = "Number of Customers"),
+    legend = list(title = list(text = "Churn"))
+  )
+
+```
+This is a strong indicator that contract length is related to churn. I will perform a deeper dive into the relationship
+
+```{r}
+# Cross-tab Churn by Contract
+table(telco$Churn, telco$Contract)
+
+# Chi-square
+chisq_test <- chisq.test(table(telco$Churn, telco$Contract))
+chisq_test
+
+# mosaic 
+mosaicplot(table(telco$Contract, telco$Churn),
+           color = c(project_colors["No"], project_colors["Yes"]),
+           main = "Churn vs Contract Type",
+           xlab = "Contract Type", ylab = "Churn")
+
+```
+
+Distribution of a single quantitative variable
+2. Numerical Variable Distribution – Tenure (Histogram)
+I want to explore the distribution of tenure (how long customers have been with the company, in months). A histogram will show the frequency of customers by their tenure.
+```{r}
+ggplot(telco, aes(x = tenure)) +
+  geom_histogram(binwidth = 5, fill=project_colors["No"], color="black") +
+  labs(title="Distribution of Customer Tenure",
+       x="Tenure (months)", y="Number of Customers") +
+  theme_minimal()
+```
+I want to explore the representation of churn status in regards to tenure, faceting on contract type.
+
+```{r}
+ggplot(telco, aes(x = tenure, fill = Churn)) +
+  geom_histogram(binwidth = 5, color = "black", position = "stack") +
+  facet_wrap(~ Contract) +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Distribution of Customer Tenure by Contract Type and Churn Status",
+    x = "Tenure (months)",
+    y = "Number of Customers",
+    fill = "Churn"
+  ) +
+  theme_minimal()
+```
+
+Distribution of two categorical variables
+3. Two Categorical Variable Distribution – Payment Method vs. Churn (Grouped Bar)
+I want to explore the relationship between payment method (bank transfer, credit card, electronic / mailed check) and churn. A grouped bar will display the relationship between payment method and churn.
+
+
+```{r}
+payment_churn_data <- telco %>%
+  group_by(PaymentMethod, Churn) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Remove "(automatic)" from PaymentMethod labels
+telco$PaymentMethod <- gsub("\\s*\\(automatic\\)", "", telco$PaymentMethod)
+
+
+plot_ly(payment_churn_data,
+        x = ~PaymentMethod,
+        y = ~count,
+        color = ~Churn,
+        colors = project_colors,
+        type = "bar") %>%
+  layout(
+    barmode = "group",
+    title = list(text = "Customer Churn by Payment Method", x = 0.5),
+    xaxis = list(title = "Payment Method", tickangle = 30),
+    yaxis = list(title = "Number of Customers"),
+    legend = list(title = list(text = "Churn"))
+  )
+
+
+```
+
+I want to explore how contract type will impact the distribution
+```{r}
+ggplot(telco, aes(x = PaymentMethod, fill = Churn)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ Contract) +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Churn Distribution by Payment Method and Contract Type",
+    x = "Payment Method",
+    y = "Customer Count",
+    fill = "Churn"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+
+```
+4. Quantitative Variable Across Categories – Monthly Charges by Contract Type (Boxplot)
+I want explore how monthly charges differ by contract type.
+```{r}
+ggplot(telco, aes(x = Contract, y = MonthlyCharges, fill = Contract)) +
+  geom_boxplot() +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Monthly Charges by Contract Type",
+    x = "Contract Type",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+Instead of mucking around to figure out the reason why I suspect a quick regression will give me more answers in less time.
+
+Quick regression
+```{r}
+reg_data <- telco %>%
+  select(-TotalCharges) %>%
+  na.omit()  
+
+reg_data <- reg_data %>%
+  mutate(across(where(is.character), as.factor))
+
+model <- lm(MonthlyCharges ~ ., data = reg_data)
+
+summary(model)
+
+```
+
+To display the regression, I will display a coefficient Plot Bar Chart of Estimates
+```{r}
+coeffs <- broom::tidy(model) %>%
+  filter(term != "(Intercept)") %>%
+  arrange(desc(estimate))
+
+ggplot(coeffs, aes(x = reorder(term, estimate), y = estimate)) +
+geom_col(fill = project_colors["Yes"]) +
+  coord_flip() +
+  labs(
+    title = "Regression Coefficients: Impact on Monthly Charges",
+    x = "Predictor",
+    y = "Estimated Impact ($)"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+ggplot(telco, aes(x = InternetService, y = MonthlyCharges, fill = InternetService)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c(
+    "DSL" = "#16A085",
+    "Fiber optic" = "#D35400",
+    "No" = "#95A5A6"
+  )) +
+  labs(
+    title = "Monthly Charges by Internet Service Type",
+    x = "Internet Service",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+Monthly Charges by Streaming TV Usage
+```{r}
+ggplot(telco, aes(x = StreamingTV, y = MonthlyCharges, fill = StreamingTV)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Yes" = "#E74C3C", "No" = "#3498DB")) +
+  labs(
+    title = "Monthly Charges by Streaming TV Subscription",
+    x = "Streaming TV",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+Monthly Charges by Tech Support
+```{r}
+ggplot(telco, aes(x = TechSupport, y = MonthlyCharges, fill = TechSupport)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Yes" = "#E74C3C", "No" = "#3498DB")) +
+  labs(
+    title = "Monthly Charges by Tech Support Access",
+    x = "Tech Support",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+Monthly Charges by Paperless Billing
+```{r}
+ggplot(telco, aes(x = PaperlessBilling, y = MonthlyCharges, fill = PaperlessBilling)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Yes" = "#E74C3C", "No" = "#3498DB")) +
+  labs(
+    title = "Monthly Charges by Paperless Billing Status",
+    x = "Paperless Billing",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+5. Relationship between two quantitative variables
+Relationship Between Two Variables – Tenure vs Monthly Charges (Scatter Plot)
+Now I explore how a numeric variable relates to churn. Plotting MonthlyCharges against tenure, and using color to show churn status, can reveal if churners cluster in some region.
+
+```{r}
+telco$Churn <- factor(trimws(telco$Churn), levels = c("No", "Yes"))
+
+ggplot(telco, aes(x = tenure, y = MonthlyCharges, color = Churn)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Monthly Charges vs Tenure, by Churn Status",
+       x = "Tenure (months)", y = "Monthly Charges (USD)") +
+  scale_color_manual(values = project_colors[c("No", "Yes")]) +
+  theme_minimal()
+
+```
+
+Create a chart not directly discussed in class (e.g. Heatmap, Radar, Contour, Sunburst)
+6. Heatmap – Churn Rate by Contract and Internet Service
+Finally, I wanted to create a heatmap to visualize churn rates across two categorical dimensions: Contract type and InternetService type. This will highlight combinations (e.g. Fiber optic + month-to-month) that have especially high churn.
+
+```{r}
+churn_rate <- telco %>%
+  group_by(Contract, InternetService) %>%
+  summarize(churn_pct = mean(Churn == "Yes") * 100)
+
+ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
+  geom_tile(color="white") +
+  scale_fill_gradient(low="lightyellow", high="red", name="Churn Rate (%)") +
+  labs(title="Churn Rate Heatmap: Contract vs Internet Service", 
+       x="Contract Type", y="Internet Service") +
+  theme_minimal()
+
+```
+7. Bubble Plot – Customer Charges Over Time by Contract Type
+ I wanted to highlight how customers on month-to-month contracts often accumulate high charges earlier, while those on longer contracts tend to accrue charges more gradually.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+telco$TenureBin <- cut(telco$tenure,
+                       breaks = seq(0, 72, by = 6),
+                       include.lowest = TRUE,
+                       labels = c("0–6", "7–12", "13–18", "19–24", "25–30", "31–36",
+                                  "37–42", "43–48", "49–54", "55–60", "61–66", "67–72"))
+
+telco$TotalCharges <- as.numeric(as.character(telco$TotalCharges))
+
+telco_clean <- telco %>% filter(!is.na(TotalCharges))
+
+
+plot_ly(
+  data = telco_clean,
+  x = ~MonthlyCharges,
+  y = ~TotalCharges,
+  size = ~tenure,
+  color = ~Contract,
+  frame = ~TenureBin,
+  text = ~paste("Contract:", Contract,
+                "<br>Monthly Charges:", round(MonthlyCharges, 2),
+                "<br>Total Charges:", round(TotalCharges, 2),
+                "<br>Tenure:", tenure),
+  colors = c(
+    "Month-to-month" = "#F39C12",
+    "One year" = "#2ECC71",
+    "Two year" = "#34495E"
+  ),
+  type = 'scatter',
+  mode = 'markers',
+  marker = list(opacity = 0.7, sizemode = "area", line = list(width = 1, color = "#FFFFFF"))
+) %>%
+  layout(
+    title = list(text = "Customer Charges Over Time by Contract Type", x = 0.5),
+    xaxis = list(title = "Monthly Charges"),
+    yaxis = list(title = "Total Charges"),
+    showlegend = TRUE
+  )
+
+
+```
+

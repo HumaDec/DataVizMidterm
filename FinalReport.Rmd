@@ -1,0 +1,318 @@
+---
+title: "MidTerm_Telecom"
+author: "Emma Horton"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+MidTerm Telecom Customer Churn Analysis
+Emma Horton – Data Visualization Midterm Project
+Repository: https://github.com/HumaDec/DataVizMidterm
+
+For this project, I selected the Telco Customer Churn dataset (originally provided by IBM and available on Kaggle), which includes data on 7,043 telecom customers across 21 columns. Each row represents a customer, with information spanning:
+
+Demographics (e.g., gender, senior citizen status)
+
+Subscription details (e.g., contract type, internet service)
+
+Billing metrics (e.g., monthly and total charges)
+
+Churn status
+
+This dataset was chosen because of its rich mix of categorical (e.g., Contract, Churn) and quantitative variables (e.g., Tenure, MonthlyCharges), which are well-suited for visualization and exploratory analysis.
+
+
+
+Libraries Used: 
+```{r libraries, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(lsr)
+library(broom)
+
+```
+
+Data Loading
+To ensure proper parsing of blank fields (especially in TotalCharges), I used na.strings = c(""). This helps convert empty strings into NA values.
+```{r}
+telco <- read.csv("Telco-Customer-Churn.csv", na.strings = c(""))
+
+#str(telco)
+#summary(telco)
+#head(telco, 5)
+```
+Data Cleaning
+Convert SeniorCitizen to a labeled factor
+
+Convert multiple character variables to factors
+
+Convert TotalCharges to numeric (after removing empty string values)
+
+Standardize "No internet service"/"No phone service" to "No"
+
+Drop customerID, which is not useful
+
+```{r}
+# SeniorCitizen to factor
+telco$SeniorCitizen <- factor(telco$SeniorCitizen, levels=c(0,1), labels=c("No", "Yes"))
+
+# Character columns to factors
+cat_cols <- c("gender","Partner","Dependents","PhoneService",
+              "MultipleLines","InternetService","OnlineSecurity","OnlineBackup",
+              "DeviceProtection","TechSupport","StreamingTV","StreamingMovies",
+              "Contract","PaperlessBilling","PaymentMethod","Churn")
+
+telco[cat_cols] <- lapply(telco[cat_cols], factor)
+
+# Fix TotalCharges: convert to numeric
+telco$TotalCharges <- as.numeric(as.character(telco$TotalCharges))
+
+# Replace "No internet service" and "No phone service" with "No", replace "No phone service" with "No"
+no_internet_cols <- c("OnlineSecurity","OnlineBackup","DeviceProtection",
+                      "TechSupport","StreamingTV","StreamingMovies")
+for(col in no_internet_cols) {
+    telco[[col]] <- factor(ifelse(telco[[col]]=="No internet service", "No", 
+                                  as.character(telco[[col]])))
+}
+telco$MultipleLines <- factor(ifelse(telco$MultipleLines=="No phone service", "No", 
+                                     as.character(telco$MultipleLines)))
+# Drop customerID
+telco$customerID <- NULL
+
+# Verify results
+#sum(is.na(telco$TotalCharges))  
+#levels(telco$MultipleLines)        
+#levels(telco$OnlineSecurity)       
+
+```
+Set Color Pallet
+To maintain consistency and improve the visual appeal of plots, I defined a custom color palette for key variable levels
+```{r}
+project_colors <- c(
+  "Yes" = "#E74C3C",    
+  "No" = "#3498DB",         
+  "Female" = "#9B59B6",    
+  "Male" = "#1ABC9C",     
+  "Month-to-month" = "#F39C12",  
+  "One year" = "#2ECC71",       
+  "Two year" = "#34495E",       
+  "DSL" = "#16A085",        
+  "Fiber optic" = "#D35400",
+  "No" = "#95A5A6"          
+)
+
+```
+
+Exploratory Analysis
+First, I examined how contract type relates to customer churn. This mosaic plot visualizes the relationship between contract type and churn status. The plot and chi-square test reveal a significant relationship: Month-to-month customers churn at a much higher rate than those with longer-term contracts.
+
+```{r}
+# Cross-tab Churn by Contract
+table(telco$Churn, telco$Contract)
+
+# Chi-square
+chisq_test <- chisq.test(table(telco$Churn, telco$Contract))
+chisq_test
+
+# mosaic 
+mosaicplot(table(telco$Contract, telco$Churn),
+           color = c(project_colors["No"], project_colors["Yes"]),
+           main = "Churn vs Contract Type",
+           xlab = "Contract Type", ylab = "Churn")
+
+```
+
+To better understand customer retention, I explored the distribution of tenure (i.e., how many months a customer has been with the company). The histogram below, faceted by contract type, shows that many customers are either very new (with a spike in the 0–5 month range) or have stayed for the maximum tenure of 72 months. This suggests the company has both a large group of recent sign-ups and a core of long-term, loyal customers, with fewer in the mid-range. Newer customers are at higher risk of churn, while long-tenured customers have demonstrated lasting retention.
+
+```{r}
+ggplot(telco, aes(x = tenure, fill = Churn)) +
+  geom_histogram(binwidth = 5, color = "black", position = "stack") +
+  facet_wrap(~ Contract) +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Distribution of Customer Tenure by Contract Type and Churn Status",
+    x = "Tenure (months)",
+    y = "Number of Customers",
+    fill = "Churn"
+  ) +
+  theme_minimal()
+```
+
+To explore how contract type influences churn behavior across payment methods, I created a grouped bar chart faceted by contract type. This plot shows that customers who pay via electronic check have the highest churn rates, particularly among those with month-to-month contracts. In contrast, automatic payments (via bank or credit card) are associated with lower churn. This suggests that payment method may reflect customer commitment or other financial factors about the customer, which with targeted retention efforts such as incentives for electronic check users—could help reduce churn.
+
+```{r}
+telco$PaymentMethod <- gsub("\\s*\\(automatic\\)", "", telco$PaymentMethod)
+
+
+ggplot(telco, aes(x = PaymentMethod, fill = Churn)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ Contract) +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Churn Distribution by Payment Method and Contract Type",
+    x = "Payment Method",
+    y = "Customer Count",
+    fill = "Churn"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+To explore how monthly charges differ across contract types, I used a boxplot to compare the distribution of charges for customers on Month-to-month, One-year, and Two-year plans. The results show that Month-to-month customers tend to pay slightly more, with a wider range of charges and more high-cost outliers. In contrast, customers on longer-term contracts have tighter, lower distributions, likely due to discounts or bundling associated with those plans—or potentially due to differences in the types of customers who opt for them.
+
+```{r}
+ggplot(telco, aes(x = Contract, y = MonthlyCharges, fill = Contract)) +
+  geom_boxplot() +
+  scale_fill_manual(values = project_colors) +
+  labs(
+    title = "Monthly Charges by Contract Type",
+    x = "Contract Type",
+    y = "Monthly Charges (USD)"
+  ) +
+  theme_minimal()
+
+```
+Rather than speculating further, I decided to run a multiple linear regression to better understand which factors influence monthly charges. The regression results indicate that Internet service type, contract length, and optional services (such as StreamingTV and TechSupport) significantly influence monthly charges. Specifically:
+Fiber optic internet and month-to-month contracts are strong predictors of higher charges.
+Longer contracts and no internet service are associated with lower charges.
+Add-on services also drive costs upward, reflecting more engaged or high-value customers.
+These insights align with customer segmentation patterns and may inform targeted pricing strategies or personalized plan recommendations.
+To visualize the regression output, I provide a bar chart of coefficient estimates.
+
+
+```{r}
+reg_data <- telco %>%
+  select(-TotalCharges) %>%
+  na.omit()  
+
+reg_data <- reg_data %>%
+  mutate(across(where(is.character), as.factor))
+
+model <- lm(MonthlyCharges ~ ., data = reg_data)
+
+summary(model)
+
+```
+
+
+```{r}
+coeffs <- broom::tidy(model) %>%
+  filter(term != "(Intercept)") %>%
+  arrange(desc(estimate))
+
+ggplot(coeffs, aes(x = reorder(term, estimate), y = estimate)) +
+geom_col(fill = project_colors["Yes"]) +
+  coord_flip() +
+  labs(
+    title = "Regression Coefficients: Impact on Monthly Charges",
+    x = "Predictor",
+    y = "Estimated Impact ($)"
+  ) +
+  theme_minimal()
+
+```
+
+
+To explore how churn relates to both tenure and monthly charges, I created a scatter plot where each point represents a customer, colored by churn status.
+
+The visualization reveals that churned customers are heavily concentrated at low tenure levels, supporting earlier findings that many cancellations occur early in the customer lifecycle, often among those on month-to-month contracts. In contrast, churn is rare among long-tenured customers, indicating stronger loyalty or satisfaction over time.
+
+There is also a noticeable cluster of churned customers in the upper-left region of the plot—those with high monthly charges and low tenure—suggesting that new customers with higher bills are more likely to cancel early.
+
+This pattern reinforces the inverse relationship between tenure and churn, and suggests that monthly charges may also contribute to early cancellations. These insights highlight potential opportunities for improving early retention through pricing adjustments, onboarding enhancements, or targeted support for high-risk customer segments.
+
+```{r}
+telco$Churn <- factor(trimws(telco$Churn), levels = c("No", "Yes"))
+
+ggplot(telco, aes(x = tenure, y = MonthlyCharges, color = Churn)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Monthly Charges vs Tenure, by Churn Status",
+       x = "Tenure (months)", y = "Monthly Charges (USD)") +
+  scale_color_manual(values = project_colors[c("No", "Yes")]) +
+  theme_minimal()
+
+```
+
+
+To explore the interaction between contract type and internet service on churn behavior, I created a heatmap showing the churn rate across all combinations of these two categorical variables. Each tile represents a unique pairing, with color intensity indicating churn percentage—lighter shades represent lower churn, and deeper reds indicate higher churn.
+
+Month-to-month + Fiber optic customers show the highest churn rate, represented by the most intense red tile. This combination likely reflects customers who face high costs without the commitment of a contract, making them more likely to cancel.
+
+In contrast, Two-year contracts, regardless of internet service, consistently exhibit low churn (often below 10%), shown by the lightest tiles. This reinforces earlier findings about long-term contracts being associated with stronger retention.
+
+DSL users on month-to-month plans have a moderate churn rate—higher than two-year DSL contracts, but not as high as fiber. This could reflect cost differences between DSL and fiber internet.
+
+Interestingly, customers with no internet service on month-to-month plans (likely phone-only users) show relatively low churn, potentially due to lower billing amounts or fewer alternatives.
+
+Overall, the heatmap highlights contract type as the dominant factor in churn, with the most significant vertical contrast between month-to-month and longer-term contracts. Among month-to-month customers, internet service type further differentiates churn risk, with fiber optic customers being the most vulnerable segment.
+
+```{r}
+churn_rate <- telco %>%
+  group_by(Contract, InternetService) %>%
+  summarize(churn_pct = mean(Churn == "Yes") * 100)
+
+ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
+  geom_tile(color="white") +
+  scale_fill_gradient(low="lightyellow", high="red", name="Churn Rate (%)") +
+  labs(title="Churn Rate Heatmap: Contract vs Internet Service", 
+       x="Contract Type", y="Internet Service") +
+  theme_minimal()
+
+```
+
+To explore how revenue accumulates over time for different customer types, I created a bubble plot showing the relationship between monthly charges, total charges, and contract type, animated across tenure bins. Each bubble represents a customer, with size indicating tenure and color representing contract type.
+
+The visualization shows that month-to-month customers tend to accumulate lower total charges early on, though some persist with high monthly fees. In contrast, two-year contract customers steadily build up higher total charges over time, reflecting greater long-term value despite being fewer in number.
+
+This plot reinforces earlier findings that month-to-month plans are riskier, with higher churn rates and more variability in revenue. Many of these customers churn early, especially those facing high monthly charges, pointing to price sensitivity among new sign-ups. Offering early-stage incentives or onboarding support could improve retention in this group.
+
+At the same time, long-tenured customers (5+ years) contribute significantly to overall revenue. These “loyalists” tend to stay on longer contracts and may benefit from locked-in rates or bundled service discounts. Understanding what keeps them satisfied could inform broader retention strategies.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+telco$TenureBin <- cut(telco$tenure,
+                       breaks = seq(0, 72, by = 6),
+                       include.lowest = TRUE,
+                       labels = c("0–6", "7–12", "13–18", "19–24", "25–30", "31–36",
+                                  "37–42", "43–48", "49–54", "55–60", "61–66", "67–72"))
+
+telco$TotalCharges <- as.numeric(as.character(telco$TotalCharges))
+
+telco_clean <- telco %>% filter(!is.na(TotalCharges))
+
+
+plot_ly(
+  data = telco_clean,
+  x = ~MonthlyCharges,
+  y = ~TotalCharges,
+  size = ~tenure,
+  color = ~Contract,
+  frame = ~TenureBin,
+  text = ~paste("Contract:", Contract,
+                "<br>Monthly Charges:", round(MonthlyCharges, 2),
+                "<br>Total Charges:", round(TotalCharges, 2),
+                "<br>Tenure:", tenure),
+  colors = c(
+    "Month-to-month" = "#F39C12",
+    "One year" = "#2ECC71",
+    "Two year" = "#34495E"
+  ),
+  type = 'scatter',
+  mode = 'markers',
+  marker = list(opacity = 0.7, sizemode = "area", line = list(width = 1, color = "#FFFFFF"))
+) %>%
+  layout(
+    title = list(text = "Customer Charges Over Time by Contract Type", x = 0.5),
+    xaxis = list(title = "Monthly Charges"),
+    yaxis = list(title = "Total Charges"),
+    showlegend = TRUE
+  )
+
+
+```
+

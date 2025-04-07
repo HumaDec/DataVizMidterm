@@ -338,6 +338,9 @@ ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
 ```
 7. Bubble Plot – Customer Charges Over Time by Contract Type
  I wanted to highlight how customers on month-to-month contracts often accumulate high charges earlier, while those on longer contracts tend to accrue charges more gradually.
+ 
+ 
+ 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 telco$TenureBin <- cut(telco$tenure,
                        breaks = seq(0, 72, by = 6),

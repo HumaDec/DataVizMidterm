@@ -34,7 +34,6 @@ library(dplyr)
 library(plotly)
 library(lsr)
 library(broom)
-library(htmlwidgets)
 
 ```
 
@@ -237,7 +236,23 @@ ggsave("coef.png", width = 8, height = 6, dpi = 300)
 
 ```
 
+Create a chart not directly discussed in class (e.g. Heatmap, Radar, Contour, Sunburst)
+6. Heatmap – Churn Rate by Contract and Internet Service
+Finally, I wanted to create a heatmap to visualize churn rates across two categorical dimensions: Contract type and InternetService type. This will highlight combinations (e.g. Fiber optic + month-to-month) that have especially high churn.
 
+```{r}
+churn_rate <- telco %>%
+  group_by(Contract, InternetService) %>%
+  summarize(churn_pct = mean(Churn == "Yes") * 100)
+
+ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
+  geom_tile(color="white") +
+  scale_fill_gradient(low="lightyellow", high="red", name="Churn Rate (%)") +
+  labs(title="Churn Rate Heatmap: Contract vs Internet Service", 
+       x="Contract Type", y="Internet Service") +
+  theme_minimal()
+
+```
 To explore how churn relates to both tenure and monthly charges, I created a scatter plot where each point represents a customer, colored by churn status.
 
 The visualization reveals that churned customers are heavily concentrated at low tenure levels, supporting earlier findings that many cancellations occur early in the customer lifecycle, often among those on month-to-month contracts. In contrast, churn is rare among long-tenured customers, indicating stronger loyalty or satisfaction over time.

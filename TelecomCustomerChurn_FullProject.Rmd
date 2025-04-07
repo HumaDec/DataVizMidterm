@@ -19,6 +19,8 @@ library(dplyr)
 library(plotly)
 library(lsr)
 library(broom)
+library(htmlwidgets)
+
 
 ```
 
@@ -379,6 +381,49 @@ plot_ly(
     yaxis = list(title = "Total Charges"),
     showlegend = TRUE
   )
+
+
+```
+
+
+Key Churn point
+```{r}
+
+churn_by_tenure <- telco %>%
+  group_by(tenure) %>%
+  summarize(
+    churn_rate = mean(Churn == "Yes")
+  )
+
+ggplot(churn_by_tenure, aes(x = tenure, y = churn_rate)) +
+  geom_line(color = "steelblue") +
+  geom_point() +
+  labs(
+    title = "Churn Rate by Tenure",
+    x = "Tenure (months)",
+    y = "Churn Rate"
+  )
+
+```
+
+```{r}
+churn_by_tenure <- telco %>%
+  group_by(tenure) %>%
+  summarize(
+    churn_rate = mean(Churn == "Yes")
+  )
+
+inflection <- ggplot(churn_by_tenure, aes(x = tenure, y = churn_rate)) +
+  geom_smooth(method = "loess", span = 0.2, se = FALSE, color = "darkred") +
+  labs(
+    title = "Smoothed Churn Rate by Tenure",
+    x = "Tenure (months)",
+    y = "Churn Rate"
+  )
+
+ggplotly(inflection)
+
+saveWidget(p, "inflection.html", selfcontained = TRUE)
 
 
 ```

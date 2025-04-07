@@ -21,7 +21,6 @@ library(lsr)
 library(broom)
 library(htmlwidgets)
 
-
 ```
 
 Data Loading
@@ -421,9 +420,11 @@ inflection <- ggplot(churn_by_tenure, aes(x = tenure, y = churn_rate)) +
     y = "Churn Rate"
   )
 
-ggplotly(inflection)
+plot <- ggplotly(inflection)
 
-saveWidget(p, "inflection.html", selfcontained = TRUE)
+inflection
+
+saveWidget(plot, "inflection.html", selfcontained = TRUE)
 
 
 ```

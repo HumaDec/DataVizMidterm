@@ -34,6 +34,7 @@ library(dplyr)
 library(plotly)
 library(lsr)
 library(broom)
+library(htmlwidgets)
 
 ```
 
@@ -120,17 +121,25 @@ chisq_test <- chisq.test(table(telco$Churn, telco$Contract))
 chisq_test
 
 # mosaic 
+mosaic <- mosaicplot(table(telco$Contract, telco$Churn),
+           color = c(project_colors["No"], project_colors["Yes"]),
+           main = "Churn vs Contract Type",
+           xlab = "Contract Type", ylab = "Churn")
+
+
+png("mosaic.png", width = 800, height = 600)
 mosaicplot(table(telco$Contract, telco$Churn),
            color = c(project_colors["No"], project_colors["Yes"]),
            main = "Churn vs Contract Type",
            xlab = "Contract Type", ylab = "Churn")
+dev.off()
 
 ```
 
 To better understand customer retention, I explored the distribution of tenure (i.e., how many months a customer has been with the company). The histogram below, faceted by contract type, shows that many customers are either very new (with a spike in the 0–5 month range) or have stayed for the maximum tenure of 72 months. This suggests the company has both a large group of recent sign-ups and a core of long-term, loyal customers, with fewer in the mid-range. Newer customers are at higher risk of churn, while long-tenured customers have demonstrated lasting retention.
 
 ```{r}
-ggplot(telco, aes(x = tenure, fill = Churn)) +
+histo <- ggplot(telco, aes(x = tenure, fill = Churn)) +
   geom_histogram(binwidth = 5, color = "black", position = "stack") +
   facet_wrap(~ Contract) +
   scale_fill_manual(values = project_colors) +
@@ -141,6 +150,8 @@ ggplot(telco, aes(x = tenure, fill = Churn)) +
     fill = "Churn"
   ) +
   theme_minimal()
+histo
+ggsave("histo.png", width = 8, height = 6, dpi = 300)
 ```
 
 To explore how contract type influences churn behavior across payment methods, I created a grouped bar chart faceted by contract type. This plot shows that customers who pay via electronic check have the highest churn rates, particularly among those with month-to-month contracts. In contrast, automatic payments (via bank or credit card) are associated with lower churn. This suggests that payment method may reflect customer commitment or other financial factors about the customer, which with targeted retention efforts such as incentives for electronic check users—could help reduce churn.
@@ -149,7 +160,7 @@ To explore how contract type influences churn behavior across payment methods, I
 telco$PaymentMethod <- gsub("\\s*\\(automatic\\)", "", telco$PaymentMethod)
 
 
-ggplot(telco, aes(x = PaymentMethod, fill = Churn)) +
+paymentbar <- ggplot(telco, aes(x = PaymentMethod, fill = Churn)) +
   geom_bar(position = "dodge") +
   facet_wrap(~ Contract) +
   scale_fill_manual(values = project_colors) +
@@ -161,12 +172,15 @@ ggplot(telco, aes(x = PaymentMethod, fill = Churn)) +
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
+paymentbar
+ggsave("paymentbar.png", width = 8, height = 6, dpi = 300)
+
 ```
 
 To explore how monthly charges differ across contract types, I used a boxplot to compare the distribution of charges for customers on Month-to-month, One-year, and Two-year plans. The results show that Month-to-month customers tend to pay slightly more, with a wider range of charges and more high-cost outliers. In contrast, customers on longer-term contracts have tighter, lower distributions, likely due to discounts or bundling associated with those plans—or potentially due to differences in the types of customers who opt for them.
 
 ```{r}
-ggplot(telco, aes(x = Contract, y = MonthlyCharges, fill = Contract)) +
+box <- ggplot(telco, aes(x = Contract, y = MonthlyCharges, fill = Contract)) +
   geom_boxplot() +
   scale_fill_manual(values = project_colors) +
   labs(
@@ -175,6 +189,8 @@ ggplot(telco, aes(x = Contract, y = MonthlyCharges, fill = Contract)) +
     y = "Monthly Charges (USD)"
   ) +
   theme_minimal()
+box
+ggsave("box.png", width = 8, height = 6, dpi = 300)
 
 ```
 Rather than speculating further, I decided to run a multiple linear regression to better understand which factors influence monthly charges. The regression results indicate that Internet service type, contract length, and optional services (such as StreamingTV and TechSupport) significantly influence monthly charges. Specifically:
@@ -205,7 +221,7 @@ coeffs <- broom::tidy(model) %>%
   filter(term != "(Intercept)") %>%
   arrange(desc(estimate))
 
-ggplot(coeffs, aes(x = reorder(term, estimate), y = estimate)) +
+coef <- ggplot(coeffs, aes(x = reorder(term, estimate), y = estimate)) +
 geom_col(fill = project_colors["Yes"]) +
   coord_flip() +
   labs(
@@ -214,6 +230,10 @@ geom_col(fill = project_colors["Yes"]) +
     y = "Estimated Impact ($)"
   ) +
   theme_minimal()
+
+coef
+ggsave("coef.png", width = 8, height = 6, dpi = 300)
+
 
 ```
 
@@ -229,12 +249,15 @@ This pattern reinforces the inverse relationship between tenure and churn, and s
 ```{r}
 telco$Churn <- factor(trimws(telco$Churn), levels = c("No", "Yes"))
 
-ggplot(telco, aes(x = tenure, y = MonthlyCharges, color = Churn)) +
+churn <- ggplot(telco, aes(x = tenure, y = MonthlyCharges, color = Churn)) +
   geom_point(alpha = 0.6) +
   labs(title = "Monthly Charges vs Tenure, by Churn Status",
        x = "Tenure (months)", y = "Monthly Charges (USD)") +
   scale_color_manual(values = project_colors[c("No", "Yes")]) +
   theme_minimal()
+churn 
+ggsave("churn.png", width = 8, height = 6, dpi = 300)
+
 
 ```
 
@@ -256,12 +279,17 @@ churn_rate <- telco %>%
   group_by(Contract, InternetService) %>%
   summarize(churn_pct = mean(Churn == "Yes") * 100)
 
-ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
+chrunrate <- ggplot(churn_rate, aes(x = Contract, y = InternetService, fill = churn_pct)) +
   geom_tile(color="white") +
   scale_fill_gradient(low="lightyellow", high="red", name="Churn Rate (%)") +
   labs(title="Churn Rate Heatmap: Contract vs Internet Service", 
        x="Contract Type", y="Internet Service") +
   theme_minimal()
+
+churn
+
+ggsave("chrunrate.png", width = 8, height = 6, dpi = 300)
+
 
 ```
 
